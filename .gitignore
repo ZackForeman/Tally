@@ -11,3 +11,8 @@ wheels/
 
 # Environment variables
 .env
+# Real customer documents and run data: never commit
+data/
+uploads/
+*.sqlite
+*.db

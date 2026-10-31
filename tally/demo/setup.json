@@ -1,0 +1,34 @@
+{
+  "haulier": "Kestrel Haulage Ltd",
+  "settings": {
+    "fleet": ["KX21 HLG", "KX19 BRT", "LN70 TMP", "KX68 DWV"],
+    "short_tonnage_t": "0.1",
+    "candidate_tonnage_t": "0.5",
+    "date_window_days": 1,
+    "reg_max_distance": 1,
+    "site_miles": {}
+  },
+  "rate_cards": [
+    {
+      "customer": "Greystone Aggregates",
+      "day_rate": "0.25", "night_rate": "0.30", "weekend_rate": "0.35",
+      "recycled_per_load": "67.50",
+      "chute_per_hour": "50", "non_chute_per_hour": "40",
+      "part_return": "55", "full_return": "100",
+      "guarantee_day": "200", "guarantee_night": "350"
+    },
+    {
+      "customer": "Marsh Lane Surfacing",
+      "day_rate": "0.24", "night_rate": "0.29", "weekend_rate": "0.33",
+      "recycled_per_load": "67.50",
+      "waiting_per_hour": "45", "waiting_free_minutes": 60,
+      "guarantee_day": "200", "guarantee_night": "350"
+    },
+    {
+      "customer": "Hollins Quarry Products",
+      "day_rate": "0.26", "night_rate": "0.31", "weekend_rate": "0.36",
+      "recycled_per_load": "67.50",
+      "guarantee_day": "200", "guarantee_night": "350"
+    }
+  ]
+}

@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tally</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .drop.over { outline: 2px dashed #0f766e; background: #f0fdfa; }
+  .stage { transition: background-color .2s, color .2s; }
+  [data-amount^="-"] { color: #b45309; }
+</style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen">
+
+<header class="bg-white border-b border-stone-200">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+    <div class="flex items-baseline gap-2">
+      <span class="text-xl font-bold tracking-tight">Tally</span>
+      <span id="haulier" class="text-sm text-stone-500"></span>
+    </div>
+    <div class="ml-auto flex items-center gap-2 text-sm">
+      <select id="runs" class="border border-stone-300 rounded px-2 py-1 bg-white max-w-[14rem]"><option value="">Past runs…</option></select>
+      <button id="replay" class="border border-stone-300 rounded px-2 py-1 hover:bg-stone-100 disabled:opacity-40" disabled>Replay run</button>
+      <button id="setupBtn" class="border border-stone-300 rounded px-2 py-1 hover:bg-stone-100">Set-up</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+  <!-- 1. Upload -->
+  <section id="upload" class="bg-white border border-stone-200 rounded-lg p-4">
+    <div id="drop" class="drop rounded-lg border-2 border-dashed border-stone-300 p-6 text-center cursor-pointer">
+      <p class="font-medium">Drop self-bills, ticket photos and the work log here</p>
+      <p class="text-sm text-stone-500 mt-1">PDF, JPG, PNG, HEIC, CSV or XLSX. Re-uploads of the same file are ignored.</p>
+      <input id="files" type="file" multiple class="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.csv,.xlsx">
+    </div>
+    <div class="flex items-center gap-3 mt-3">
+      <span id="picked" class="text-sm text-stone-600">No files chosen</span>
+      <button id="go" class="ml-auto bg-teal-700 text-white rounded px-4 py-2 font-medium disabled:opacity-40" disabled>Check them</button>
+    </div>
+  </section>
+
+  <!-- 2. Progress -->
+  <section id="progress" class="hidden bg-white border border-stone-200 rounded-lg p-4">
+    <div class="flex items-baseline gap-3 mb-3">
+      <h2 class="font-semibold">Progress</h2>
+      <span id="clock" class="text-sm text-stone-500 tabular-nums"></span>
+      <div id="stages" class="ml-auto flex gap-1 text-xs"></div>
+    </div>
+    <div id="board" class="divide-y divide-stone-100"></div>
+  </section>
+
+  <!-- 3. Dashboard -->
+  <section id="dash" class="hidden space-y-6">
+    <div class="bg-white border border-stone-200 rounded-lg p-5 flex flex-wrap gap-6 items-end">
+      <div>
+        <div class="text-sm text-stone-500">Owed to you, approved lines</div>
+        <div id="owed" class="text-4xl font-bold tabular-nums"></div>
+        <div id="owedNote" class="text-sm text-stone-600 mt-1"></div>
+      </div>
+      <div class="text-sm text-stone-600 space-y-0.5" id="stats"></div>
+      <a id="shiftsCsv" class="ml-auto text-sm underline text-teal-800" href="#">Shift log (CSV)</a>
+    </div>
+
+    <div id="customers" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+
+    <div id="auditBox" class="bg-white border border-stone-200 rounded-lg p-4">
+      <h2 class="font-semibold">Patterns across the whole set <span class="text-xs font-normal text-stone-500">Argon audit</span></h2>
+      <div id="audit" class="mt-2 text-sm"></div>
+    </div>
+
+    <div id="queueBox" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <h2 class="font-semibold">Needs you</h2>
+      <div id="queue" class="mt-2 space-y-3 text-sm"></div>
+    </div>
+
+    <div class="bg-white border border-stone-200 rounded-lg">
+      <div class="flex flex-wrap items-center gap-3 p-4 border-b border-stone-100">
+        <h2 class="font-semibold">Lines to claim</h2>
+        <span class="text-xs text-stone-500">Tick the lines that go into the dispute. Weak evidence starts unticked.</span>
+        <select id="filter" class="ml-auto border border-stone-300 rounded px-2 py-1 text-sm bg-white"><option value="">All customers</option></select>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-stone-500 text-xs uppercase">
+            <tr><th class="p-2 w-8"></th><th class="p-2">Date</th><th class="p-2">Customer</th><th class="p-2">Reg</th><th class="p-2">Ticket</th><th class="p-2">Issue</th><th class="p-2">Detail</th><th class="p-2 text-right">Amount</th></tr>
+          </thead>
+          <tbody id="lines" class="divide-y divide-stone-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white border border-stone-200 rounded-lg p-4">
+      <h2 class="font-semibold">Warnings</h2>
+      <p class="text-xs text-stone-500">No money attached: things to check before claiming.</p>
+      <ul id="warnings" class="mt-2 text-sm space-y-1"></ul>
+    </div>
+
+    <div class="bg-white border border-stone-200 rounded-lg p-4">
+      <h2 class="font-semibold">Shift calendar</h2>
+      <p class="text-xs text-stone-500">Each truck-shift: corrected earnings against the guarantee. Amber = below guarantee.</p>
+      <div id="calendar" class="mt-3 space-y-4"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Evidence drawer -->
+<div id="drawer" class="hidden fixed inset-0 z-40">
+  <div class="absolute inset-0 bg-black/30" data-close></div>
+  <aside class="absolute right-0 top-0 h-full w-full max-w-3xl bg-white shadow-xl overflow-y-auto">
+    <div class="sticky top-0 bg-white border-b border-stone-200 p-3 flex items-center">
+      <h3 id="drawerTitle" class="font-semibold"></h3>
+      <button class="ml-auto px-2 text-xl" data-close aria-label="Close">×</button>
+    </div>
+    <div id="drawerBody" class="p-4 space-y-4 text-sm"></div>
+  </aside>
+</div>
+
+<!-- Dispute / set-up modal -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/30" data-close></div>
+  <div class="relative bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div class="sticky top-0 bg-white border-b border-stone-200 p-3 flex items-center">
+      <h3 id="modalTitle" class="font-semibold"></h3>
+      <button class="ml-auto px-2 text-xl" data-close aria-label="Close">×</button>
+    </div>
+    <div id="modalBody" class="p-4 space-y-3 text-sm"></div>
+  </div>
+</div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Display only: every figure is a string computed on the server.
+const gbp = s => (String(s).startsWith("-") ? "−£" : "£") + Number(String(s).replace("-", "")).toLocaleString("en-GB", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const day = d => d ? new Date(d + "T00:00").toLocaleDateString("en-GB", {day: "2-digit", month: "short"}) : "";
+
+let runId = null, report = null, source = null, picked = [], ticker = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+  return res.json();
+}
+
+// ---------- upload ----------
+const drop = $("#drop"), input = $("#files");
+drop.onclick = () => input.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); pick([...e.dataTransfer.files]); };
+input.onchange = () => pick([...input.files]);
+function pick(files) {
+  picked = picked.concat(files);
+  $("#picked").textContent = `${picked.length} file${picked.length === 1 ? "" : "s"} chosen`;
+  $("#go").disabled = !picked.length;
+}
+$("#go").onclick = async () => {
+  const form = new FormData();
+  picked.forEach(f => form.append("files", f));
+  $("#go").disabled = true;
+  const res = await fetch("/api/runs", {method: "POST", body: form});
+  const out = await res.json();
+  if (!res.ok) { alert(out.detail); $("#go").disabled = false; return; }
+  picked = []; $("#picked").textContent = out.duplicates.length ? `Skipped re-uploads: ${out.duplicates.join(", ")}` : "No files chosen";
+  openRun(out.run_id, false);
+  loadRuns();
+};
+
+// ---------- progress ----------
+const STEPS = ["routing", "extracting", "verifying"];
+const DONE = {passed: "Checks passed", fixed: "Fixed by Argon", review: "Needs you", confirmed: "Confirmed by you", skipped: "Skipped", error: "Error"};
+const TONE = {passed: "bg-emerald-100 text-emerald-800", fixed: "bg-sky-100 text-sky-800", review: "bg-amber-100 text-amber-800",
+              confirmed: "bg-emerald-100 text-emerald-800", skipped: "bg-stone-100 text-stone-600", error: "bg-red-100 text-red-800",
+              rereading: "bg-violet-100 text-violet-800"};
+
+function boardRow(doc) {
+  return `<div class="py-2 flex flex-wrap items-center gap-2" id="doc-${doc.doc_id}">
+    <span class="font-medium truncate max-w-[16rem]" title="${esc(doc.name)}">${esc(doc.name)}</span>
+    <span class="kind text-xs text-stone-500"></span>
+    <span class="ml-auto flex gap-1 text-xs">${STEPS.map((s, i) => `<span class="stage step-${s} px-2 py-0.5 rounded bg-stone-100 text-stone-400">${["route", "extract", "verify"][i]}</span>`).join("")}</span>
+    <span class="status text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 w-32 text-center">queued</span>
+    <div class="msg basis-full text-xs text-stone-600 empty:hidden"></div>
+  </div>`;
+}
+
+function onEvent(e) {
+  if (e.type === "run") {
+    $("#board").innerHTML = e.docs.map(boardRow).join("");
+    $("#stages").innerHTML = ["match", "adjudicate", "audit"].map(s => `<span id="stage-${s}" class="stage px-2 py-0.5 rounded bg-stone-100 text-stone-400">${s}</span>`).join("");
+    startClock();
+  } else if (e.type === "doc") {
+    const row = $(`#doc-${e.doc_id}`); if (!row) return;
+    if (e.kind) $(".kind", row).textContent = e.kind.replaceAll("_", " ");
+    const idx = e.status === "rereading" ? 2 : STEPS.indexOf(e.status);
+    STEPS.forEach((s, i) => {
+      const el = $(`.step-${s}`, row);
+      const done = idx === -1 ? !["skipped", "error"].includes(e.status) || i === 0 : i < idx;
+      el.className = `stage step-${s} px-2 py-0.5 rounded ${i === idx ? "bg-teal-600 text-white animate-pulse" : done ? "bg-teal-100 text-teal-800" : "bg-stone-100 text-stone-400"}`;
+    });
+    const st = $(".status", row);
+    st.textContent = e.status === "rereading" ? "Argon re-reading" : DONE[e.status] || e.status;
+    st.className = `status text-xs px-2 py-0.5 rounded-full w-32 text-center ${TONE[e.status] || "bg-stone-100 text-stone-500"}`;
+    if (e.message) $(".msg", row).textContent = e.status === "rereading" ? `Failed check: ${e.message}` : e.message;
+  } else if (e.type === "stage") {
+    const el = $(`#stage-${e.stage}`); if (!el) return;
+    el.className = `stage px-2 py-0.5 rounded ${e.status === "error" ? "bg-red-100 text-red-800" : "bg-teal-600 text-white animate-pulse"}`;
+    if (e.stage === "adjudicate") $("#stage-match").className = "stage px-2 py-0.5 rounded bg-teal-100 text-teal-800";
+  } else if (e.type === "adjudicated") {
+    $("#stage-adjudicate").className = "stage px-2 py-0.5 rounded bg-teal-100 text-teal-800";
+  } else if (e.type === "report") {
+    ["match", "adjudicate"].forEach(s => $(`#stage-${s}`).className = "stage px-2 py-0.5 rounded bg-teal-100 text-teal-800");
+    stopClock(e.seconds);
+    refresh();
+  } else if (e.type === "audit") {
+    $("#stage-audit").className = "stage px-2 py-0.5 rounded bg-teal-100 text-teal-800";
+    refresh();
+  } else if (e.type === "end") {
+    source && source.close();
+  }
+}
+
+function startClock() {
+  const t0 = Date.now(); clearInterval(ticker);
+  ticker = setInterval(() => $("#clock").textContent = `${((Date.now() - t0) / 1000).toFixed(0)} s`, 250);
+}
+function stopClock(seconds) { clearInterval(ticker); if (seconds != null) $("#clock").textContent = `done in ${seconds} s`; }
+
+function openRun(id, replay) {
+  runId = id; source && source.close();
+  history.replaceState(null, "", `#run=${id}`);
+  $("#replay").disabled = false;
+  $("#progress").classList.remove("hidden");
+  $("#dash").classList.add("hidden");
+  $("#board").innerHTML = "";
+  source = new EventSource(`/api/runs/${id}/events${replay ? "?replay=1" : ""}`);
+  source.onmessage = m => onEvent(JSON.parse(m.data));
+  source.onerror = () => source.close();
+  if (!replay) refresh().catch(() => {});
+}
+
+// ---------- dashboard ----------
+async function refresh() {
+  report = await api(`/api/runs/${runId}`);
+  if (report.status !== "done") return;
+  render();
+}
+
+function render() {
+  const r = report, t = r.totals;
+  $("#dash").classList.remove("hidden");
+  $("#owed").textContent = gbp(t.owed);
+  $("#owed").dataset.amount = t.owed;
+  const offset = Number(t.offset) < 0 ? ` Where a guarantee already covered a gap, ${gbp(t.offset.replace("-", ""))} is taken off rather than overclaimed.` : "";
+  $("#owedNote").textContent = `From ${t.line_errors} line error${t.line_errors === 1 ? "" : "s"} and ${t.guarantees} unpaid guarantee${t.guarantees === 1 ? "" : "s"}.${offset}`;
+  $("#stats").innerHTML = `<div>${r.matched} of ${r.items} ticketed items matched to ${r.invoice_lines} invoice lines</div>
+    <div>${r.docs.length} documents${r.seconds ? `, checked in ${r.seconds} s` : ""}</div>
+    ${Number(t.overpaid) ? `<div>Overpaid (duplicates, shown for honesty): ${gbp(t.overpaid)}</div>` : ""}
+    ${t.owed !== t.owed_all ? `<div>${gbp(t.owed_all)} if every line were claimed</div>` : ""}`;
+  $("#shiftsCsv").href = `/api/runs/${runId}/shifts.csv`;
+
+  $("#customers").innerHTML = r.by_customer.map(c => `
+    <div class="bg-white border border-stone-200 rounded-lg p-4">
+      <div class="text-sm text-stone-500">${esc(c.customer)}</div>
+      <div class="text-2xl font-semibold tabular-nums">${gbp(c.owed)}</div>
+      <div class="text-xs text-stone-500">${c.count} line${c.count === 1 ? "" : "s"}${c.oldest ? `, oldest ${day(c.oldest)}` : ""}</div>
+      <div class="flex gap-2 mt-3">
+        <button class="bg-teal-700 text-white rounded px-3 py-1 text-sm disabled:opacity-40" data-draft="${esc(c.customer)}" ${Number(c.owed) ? "" : "disabled"}>Draft dispute</button>
+        <a class="border border-stone-300 rounded px-3 py-1 text-sm ${Number(c.owed) ? "" : "pointer-events-none opacity-40"}" href="/api/runs/${runId}/evidence.pdf?customer=${encodeURIComponent(c.customer)}">Evidence PDF</a>
+      </div>
+    </div>`).join("") || `<p class="text-sm text-stone-500">Nothing owed found.</p>`;
+
+  const filter = $("#filter"), keep = filter.value;
+  filter.innerHTML = `<option value="">All customers</option>` + r.by_customer.map(c => `<option>${esc(c.customer)}</option>`).join("");
+  filter.value = keep;
+
+  renderAudit(); renderQueue(); renderLines(); renderWarnings(); renderCalendar();
+}
+
+function renderAudit() {
+  const box = $("#audit");
+  if (report.audit_status === "running" || report.audit_status === "pending") box.innerHTML = `<span class="text-stone-500 animate-pulse">Argon is reading every invoice and ticket together…</span>`;
+  else if (report.audit_status === "error") box.innerHTML = `<span class="text-red-700">The audit pass failed; every amount above still stands.</span>`;
+  else if (!report.audit.length) box.innerHTML = `<span class="text-stone-500">No patterns beyond the individual lines.</span>`;
+  else box.innerHTML = report.audit.map(p => `<div class="py-2 border-b border-stone-100 last:border-0">
+      <div class="font-medium">${esc(p.title)}${p.customer ? ` <span class="text-xs text-stone-500">${esc(p.customer)}</span>` : ""}</div>
+      <div class="text-stone-700">${esc(p.detail)}</div>
+      <div class="text-xs text-stone-400 mt-0.5">${p.refs.map(esc).join(", ")}</div></div>`).join("");
+}
+
+function renderQueue() {
+  const docs = report.docs.filter(d => ["review", "error"].includes(d.status) || d.problems.length);
+  const items = [
+    ...docs.map(d => `<div class="bg-white rounded border border-amber-200 p-3">
+      <div class="font-medium">${esc(d.name)} <span class="text-xs text-amber-800">${d.status === "error" ? "couldn't be read" : d.status === "review" ? "failed checks twice" : "rows skipped"}</span></div>
+      ${d.error ? `<div class="text-red-700">${esc(d.error)}</div>` : ""}
+      ${d.problems.map(p => `<div class="text-stone-600">${esc(p)}</div>`).join("")}
+      ${(d.attempts.at(-1)?.failures || []).map(f => `<div class="text-stone-700">• ${esc(f.message)}</div>`).join("")}
+      ${d.attempts.length ? `<button class="mt-2 underline text-teal-800" data-correct="${d.doc_id}">Check and correct the reading</button>` : ""}
+    </div>`),
+    ...report.open_matches.map(m => `<div class="bg-white rounded border border-amber-200 p-3">
+      <div class="font-medium">Which line pays for ${esc(m.kind)} on ${day(m.job.load_time.slice(0, 10))}, ${esc(m.job.vehicle_reg)}${m.job.ticket_no ? `, ticket ${esc(m.job.ticket_no)}` : ""}${m.job.net_t ? `, ${esc(m.job.net_t)} t` : ""}?</div>
+      ${m.candidates.map(c => `<div class="flex items-center gap-2 mt-1"><span class="text-stone-600">${esc(c.invoice_no)} · ${day(c.job_date)} · ${esc(c.vehicle_reg || "")} · ${esc(c.tonnes ?? "")} t · ${gbp(c.net_amount)} · ${esc(c.description)}</span>
+        <button class="ml-auto border border-stone-300 rounded px-2 py-0.5" data-pick="${esc(m.item_id)}" data-line="${esc(c.line_id)}">This one</button></div>`).join("")}
+      <button class="mt-1 border border-stone-300 rounded px-2 py-0.5" data-pick="${esc(m.item_id)}" data-line="">None: it wasn't paid</button>
+    </div>`),
+  ];
+  $("#queueBox").classList.toggle("hidden", !items.length);
+  $("#queue").innerHTML = items.join("");
+}
+
+function renderLines() {
+  const want = $("#filter").value;
+  const rows = report.findings.filter(f => f.money && (!want || f.customer === want));
+  $("#lines").innerHTML = rows.map(f => `<tr class="hover:bg-stone-50 cursor-pointer" data-finding="${esc(f.id)}">
+      <td class="p-2"><input type="checkbox" data-approve="${esc(f.id)}" ${f.approved ? "checked" : ""} ${f.flag === "Guarantee already covered" ? "disabled title='Always applied, so nothing is overclaimed'" : ""}></td>
+      <td class="p-2 whitespace-nowrap">${day(f.date)} ${esc(f.time || "")}</td>
+      <td class="p-2">${esc(f.customer)}</td>
+      <td class="p-2 whitespace-nowrap">${esc(f.job?.vehicle_reg || f.shift?.reg || "")}</td>
+      <td class="p-2">${esc(f.job?.ticket_no || "")}</td>
+      <td class="p-2"><span class="text-xs px-2 py-0.5 rounded-full ${f.claim_default ? "bg-teal-50 text-teal-800" : "bg-amber-100 text-amber-800"}">${esc(f.flag)}</span></td>
+      <td class="p-2 text-stone-600">${esc(f.detail)}${f.reasoning ? `<div class="text-xs text-violet-700">Argon: ${esc(f.reasoning)}</div>` : ""}</td>
+      <td class="p-2 text-right tabular-nums whitespace-nowrap" data-amount="${esc(f.amount)}">${gbp(f.amount)}</td></tr>`).join("");
+}
+
+function renderWarnings() {
+  const rows = report.findings.filter(f => !f.money);
+  $("#warnings").innerHTML = rows.map(f => `<li class="cursor-pointer hover:underline" data-finding="${esc(f.id)}"><span class="text-xs px-2 py-0.5 rounded-full bg-stone-100">${esc(f.flag)}</span>
+    ${esc(f.customer)} ${f.date ? `· ${day(f.date)}` : ""} ${f.job?.ticket_no ? `· ticket ${esc(f.job.ticket_no)}` : ""} · <span class="text-stone-600">${esc(f.detail)}</span>
+    ${Number(f.amount) ? `· ${gbp(f.amount)}` : ""}</li>`).join("") || `<li class="text-stone-500">None.</li>`;
+}
+
+function renderCalendar() {
+  const byReg = {};
+  report.shifts.forEach(s => (byReg[s.reg] ||= []).push(s));
+  const findingsByShift = {};
+  report.findings.forEach(f => { if (f.shift) (findingsByShift[`${f.shift.reg}|${f.shift.date}|${f.shift.kind}`] ||= []).push(f); });
+  $("#calendar").innerHTML = Object.entries(byReg).map(([reg, shifts]) => `
+    <div><div class="font-medium text-sm mb-1">${esc(reg)}</div>
+    <div class="flex flex-wrap gap-1">${shifts.map(s => {
+      const fs = findingsByShift[`${s.reg}|${s.date}|${s.kind}`] || [];
+      const short = Number(s.earned) < Number(s.guarantee);
+      const shiftRate = fs.some(f => f.flag === "Shift rate not paid");
+      return `<div class="w-24 rounded border p-1 text-[11px] leading-tight ${short ? "border-amber-300 bg-amber-50" : "border-stone-200"}"
+        title="${esc(s.customer)}: earned ${gbp(s.earned)}, paid ${gbp(s.paid)} (top-up ${gbp(s.top_up_paid)}), guarantee ${gbp(s.guarantee)}">
+        <div class="font-medium">${day(s.date)} <span class="${s.kind === "day" ? "text-stone-500" : "text-indigo-700"}">${s.kind}</span></div>
+        <div class="tabular-nums">${gbp(s.earned)} / ${gbp(s.guarantee)}</div>
+        ${shiftRate ? `<div class="text-indigo-700">paid day rate</div>` : ""}${s.pending ? `<div class="text-amber-700">pending</div>` : ""}</div>`;
+    }).join("")}</div></div>`).join("") || `<p class="text-sm text-stone-500">No shifts.</p>`;
+}
+
+// ---------- interactions ----------
+document.addEventListener("click", async e => {
+  const t = e.target;
+  if (t.closest("[data-close]")) { $("#drawer").classList.add("hidden"); $("#modal").classList.add("hidden"); return; }
+  if (t.dataset.approve !== undefined) return;  // handled on change
+  if (t.dataset.draft) return draftDispute(t.dataset.draft);
+  if (t.dataset.correct) return correctDoc(t.dataset.correct);
+  if (t.dataset.pick) {
+    report = await api(`/api/runs/${runId}/matches/${encodeURIComponent(t.dataset.pick)}`, {method: "POST", body: JSON.stringify({line_id: t.dataset.line || null})});
+    return render();
+  }
+  const row = t.closest("[data-finding]");
+  if (row) openEvidence(report.findings.find(f => f.id === row.dataset.finding));
+});
+document.addEventListener("change", async e => {
+  if (e.target.dataset.approve) {
+    report = await api(`/api/runs/${runId}/approvals`, {method: "PUT", body: JSON.stringify({[e.target.dataset.approve]: e.target.checked})});
+    render();
+  }
+  if (e.target.id === "filter") renderLines();
+  if (e.target.id === "runs" && e.target.value) openRun(e.target.value, false);
+});
+$("#replay").onclick = () => runId && openRun(runId, true);
+
+function docView(doc) {
+  if (!doc) return "";
+  const url = `/api/runs/${runId}/docs/${doc.doc_id}/file`;
+  if (doc.mime.startsWith("image/")) return `<a href="${url}" target="_blank"><img src="${url}" alt="${esc(doc.name)}" class="max-h-[60vh] rounded border border-stone-200"></a>`;
+  if (doc.mime === "application/pdf") return `<iframe src="${url}" class="w-full h-[60vh] rounded border border-stone-200" title="${esc(doc.name)}"></iframe>`;
+  return `<a class="underline" href="${url}">${esc(doc.name)}</a>`;
+}
+
+function openEvidence(f) {
+  const doc = report.docs.find(d => d.doc_id === f.doc_id);
+  const job = f.job, line = f.line;
+  const quotes = (job?.evidence || []).map(ev => `<tr><td class="pr-3 text-stone-500">${esc(ev.field)}</td><td class="pr-3">“${esc(ev.quote)}”</td>
+      <td class="${ev.confidence === "low" ? "text-amber-700" : ev.confidence === "medium" ? "text-stone-600" : "text-emerald-700"}">${esc(ev.confidence)}</td></tr>`).join("");
+  const history = (doc?.attempts || []).length > 1 ? `<div><div class="font-medium mb-1">Verification</div>${doc.attempts.map((a, i) =>
+      `<div class="text-xs">${i + 1}. ${esc(a.reader)}: ${a.failures.length ? a.failures.map(x => esc(x.message)).join("; ") : "all checks passed"}</div>`).join("")}</div>` : "";
+  $("#drawerTitle").textContent = `${f.flag}: ${gbp(f.amount)}`;
+  $("#drawerBody").innerHTML = `
+    <p class="text-stone-700">${esc(f.detail)}</p>
+    ${f.reasoning ? `<p class="text-violet-700">Argon: ${esc(f.reasoning)}</p>` : ""}
+    ${docView(doc)}
+    <div class="grid sm:grid-cols-2 gap-4">
+      ${job ? `<div><div class="font-medium mb-1">Ticket ${job.source === "work_log" ? "(work log)" : ""}</div>
+        <dl class="grid grid-cols-[auto,1fr] gap-x-3 text-xs">${[["Ticket", job.ticket_no], ["Loaded", job.load_time.replace("T", " ")], ["Reg", job.vehicle_reg],
+          ["Driver", job.driver], ["From", job.from_site], ["To", job.to_site], ["Material", job.material], ["Net", job.net_t && job.net_t + " t"],
+          ["Gross / tare", job.gross_kg && `${job.gross_kg} / ${job.tare_kg} kg`], ["Miles", job.miles],
+          ["Receiver signed", job.source === "ticket" ? (job.signatures.receiver ? "yes" : "no") : "n/a"]]
+          .filter(([, v]) => v != null && v !== "").map(([k, v]) => `<dt class="text-stone-500">${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>` : ""}
+      ${line ? `<div><div class="font-medium mb-1">Self-bill line</div>
+        <dl class="grid grid-cols-[auto,1fr] gap-x-3 text-xs">${[["Invoice", line.invoice_no], ["Date", line.job_date], ["Description", line.description],
+          ["Reg", line.vehicle_reg], ["Tonnes", line.tonnes], ["Miles", line.miles], ["Rate", line.rate], ["Paid", gbp(line.net_amount)]]
+          .filter(([, v]) => v != null && v !== "").map(([k, v]) => `<dt class="text-stone-500">${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>` :
+        `<div class="text-stone-500">No self-bill line pays for this.</div>`}
+    </div>
+    ${quotes ? `<div><div class="font-medium mb-1">What was read, word for word</div><table class="text-xs">${quotes}</table></div>` : ""}
+    ${history}`;
+  $("#drawer").classList.remove("hidden");
+}
+
+function modal(title, html) {
+  $("#modalTitle").textContent = title; $("#modalBody").innerHTML = html; $("#modal").classList.remove("hidden");
+}
+
+async function draftDispute(customer) {
+  modal(`Dispute: ${customer}`, `<p class="text-stone-500 animate-pulse">Argon is drafting from your approved lines…</p>`);
+  try {
+    const d = await api(`/api/runs/${runId}/dispute`, {method: "POST", body: JSON.stringify({customer})});
+    modal(`Dispute: ${customer}`, `
+      <p class="text-xs text-stone-500">Drafted from ${d.lines} approved line${d.lines === 1 ? "" : "s"}. The table and total are written by code, not the model.
+        ${d.used_template ? "Argon's wording wasn't used, so this is the plain template." : ""} Nothing is sent: copy it into your email.</p>
+      <label class="block text-xs text-stone-500">Subject<input id="dSubject" class="w-full border border-stone-300 rounded px-2 py-1 mt-1 text-sm" value="${esc(d.subject)}"></label>
+      <textarea id="dBody" class="w-full h-96 border border-stone-300 rounded p-2 font-mono text-xs">${esc(d.body)}</textarea>
+      <div class="flex gap-2">
+        <button id="copy" class="bg-teal-700 text-white rounded px-3 py-1">Copy email</button>
+        <a class="border border-stone-300 rounded px-3 py-1" href="/api/runs/${runId}/evidence.pdf?customer=${encodeURIComponent(customer)}">Download evidence PDF</a>
+      </div>`);
+    $("#copy").onclick = async () => {
+      await navigator.clipboard.writeText(`Subject: ${$("#dSubject").value}\n\n${$("#dBody").value}`);
+      $("#copy").textContent = "Copied";
+    };
+  } catch (err) { modal(`Dispute: ${customer}`, `<p class="text-red-700">${esc(err.message)}</p>`); }
+}
+
+function correctDoc(docId) {
+  const doc = report.docs.find(d => d.doc_id === docId);
+  const last = doc.attempts.at(-1);
+  modal(`Correct: ${doc.name}`, `
+    ${docView(doc)}
+    <div>${last.failures.map(f => `<div class="text-amber-800">• ${esc(f.message)}</div>`).join("")}</div>
+    <p class="text-xs text-stone-500">Edit the reading to match the document, then save. Your version is final; matching re-runs straight away.</p>
+    <textarea id="reading" class="w-full h-80 border border-stone-300 rounded p-2 font-mono text-xs">${esc(JSON.stringify(last.reading, null, 1))}</textarea>
+    <div class="flex items-center gap-2"><button id="saveReading" class="bg-teal-700 text-white rounded px-3 py-1">Save correction</button><span id="readingMsg" class="text-xs"></span></div>`);
+  $("#saveReading").onclick = async () => {
+    let reading;
+    try { reading = JSON.parse($("#reading").value); } catch { $("#readingMsg").textContent = "That isn't valid JSON."; return; }
+    const out = await api(`/api/runs/${runId}/docs/${docId}/reading`, {method: "PUT", body: JSON.stringify(reading)});
+    report = out.report; render();
+    $("#readingMsg").textContent = out.failures.length ? `Saved. Checks still note: ${out.failures.map(f => f.message).join("; ")}` : "Saved. All checks pass.";
+  };
+}
+
+// ---------- set-up ----------
+$("#setupBtn").onclick = async () => {
+  const s = await api("/api/setup");
+  modal("Set-up", `<p class="text-xs text-stone-500">Haulier, fleet, tolerances and each customer's rate card. Rates are £ per tonne-mile; leave a rate null if you don't know it yet and Tally won't claim it.</p>
+    <textarea id="setupJson" class="w-full h-[60vh] border border-stone-300 rounded p-2 font-mono text-xs">${esc(JSON.stringify(s, null, 2))}</textarea>
+    <div class="flex items-center gap-2"><button id="saveSetup" class="bg-teal-700 text-white rounded px-3 py-1">Save</button><span id="setupMsg" class="text-xs"></span></div>`);
+  $("#saveSetup").onclick = async () => {
+    try {
+      const saved = await api("/api/setup", {method: "PUT", body: $("#setupJson").value});
+      $("#haulier").textContent = saved.haulier; $("#setupMsg").textContent = "Saved.";
+      if (report) refresh();
+    } catch (err) { $("#setupMsg").textContent = err.message; }
+  };
+};
+
+async function loadRuns() {
+  const runs = await api("/api/runs");
+  $("#runs").innerHTML = `<option value="">Past runs…</option>` + runs.map(r => `<option value="${esc(r.run_id)}">${esc(r.created.replace("T", " "))}</option>`).join("");
+}
+api("/api/setup").then(s => $("#haulier").textContent = s.haulier);
+loadRuns();
+if (location.hash.startsWith("#run=")) openRun(location.hash.slice(5), false);
+</script>
+</body>
+</html>

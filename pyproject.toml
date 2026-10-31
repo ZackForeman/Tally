@@ -1,7 +1,26 @@
 [project]
 name = "tally"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tally: finds jobs a self-billing customer forgot to pay a haulier for, and drafts the dispute"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.162.0",
+    "google-genai>=2.3.0",
+    "openpyxl>=3.1.5",
+    "pydantic>=2.14.2",
+    "pypdf>=6.21.4",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "rapidfuzz>=3.14.6",
+    "reportlab>=5.1.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tally/tests"]
